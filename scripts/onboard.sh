@@ -16,14 +16,15 @@ branch="$(gh repo view --json defaultBranchRef --jq .defaultBranchRef.name)"
 echo "Onboarding $repo (default branch: $branch)"
 
 echo "1/5 Copying templates (no overwrite)"
-cp -Rn "$crew_root/templates/project/." .
+"$crew_root/scripts/copy-templates.sh" .
 echo "    Edit .crew/config.yml, .crew/goals.md and .crew/sources.yml, then commit them on a branch."
 
 echo "2/5 Creating labels"
 GH_REPO="$repo" "$crew_root/scripts/ensure-labels.sh"
 
 echo "3/5 Anthropic API key secret"
-if gh secret list --repo "$repo" | grep -q '^ANTHROPIC_API_KEY'; then
+existing_secrets="$(gh secret list --repo "$repo" 2>/dev/null || true)"
+if grep -q '^ANTHROPIC_API_KEY' <<<"$existing_secrets"; then
   echo "    ANTHROPIC_API_KEY already set"
 else
   echo "    Paste your key when prompted (input is hidden and goes straight to GitHub):"

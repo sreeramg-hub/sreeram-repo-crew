@@ -161,6 +161,16 @@ sleep 1
 SMOKE_RETRY_SLEEP=0 CREW_PAGES='["/"]' "$root/scripts/smoke.sh" "http://127.0.0.1:$port" >/dev/null 2>&1; [ $? -eq 0 ] && ok "passes when every page answers 200" || fail "smoke pass case"
 SMOKE_RETRY_SLEEP=0 CREW_PAGES='["/","/missing"]' "$root/scripts/smoke.sh" "http://127.0.0.1:$port" >/dev/null 2>&1; [ $? -eq 1 ] && ok "fails when a page is missing" || fail "smoke fail case"
 
+section "copy-templates.sh"
+proj="$tmp/proj"; mkdir -p "$proj/.crew"
+echo "my own goals" > "$proj/.crew/goals.md"
+"$root/scripts/copy-templates.sh" "$proj" >/dev/null 2>&1; [ $? -eq 0 ] && ok "exits 0 when some files already exist" || fail "exits 0 when some files already exist"
+[ "$(cat "$proj/.crew/goals.md")" = "my own goals" ] && ok "never overwrites an existing file" || fail "overwrote an existing file"
+[ -f "$proj/.crew/config.yml" ] && [ -f "$proj/.github/workflows/crew-scout.yml" ] && ok "adds the missing files" || fail "adds the missing files"
+"$root/scripts/copy-templates.sh" "$proj" 2>&1 | grep -q '0 added' && ok "second run adds nothing and still exits 0" || fail "second run"
+full="$tmp/full"; mkdir -p "$full"; cp -R "$root/templates/project/." "$full/"
+"$root/scripts/copy-templates.sh" "$full" >/dev/null 2>&1; [ $? -eq 0 ] && ok "exits 0 when every file already exists (the case that broke onboarding)" || fail "all-present case"
+
 section "Prompt assembly"
 (
   export CREW_DIR="$root"

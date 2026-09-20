@@ -165,6 +165,17 @@ jq -r .body <<<"$payload" | grep -q 'build failed' && ok "failed checks are list
 folded="$(jq -n --slurpfile r "$fx/reviewer-approve-with-major.json" '{reviewer:$r[0],shots:[],hard:[],verdict:"changes_requested",round:1,max_rounds:3,sha:"abc",preview:"",all_general:true}' | jq -f "$root/scripts/review-payload.jq")"
 [ "$(jq '.comments | length' <<<"$folded")" = "0" ] && jq -r .body <<<"$folded" | grep -q 'lib/data.ts:42' && ok "fallback folds inline findings into the body" || fail "fallback fold"
 
+section "acceptance criteria grading"
+jq '. + {criteria:[{criterion:"Loop pauses when the tab is hidden",status:"met",note:""},{criterion:"Mobile Lighthouse score improves",status:"not_verifiable",note:"Run Lighthouse on the preview"}]}' "$fx/reviewer-clean.json" > "$tmp/crit-unv.json"
+payload="$(run_review "$tmp/crit-unv.json" "$fx/checks-pass.json" 2>"$tmp/err")"
+grep -q 'verdict=approve' "$tmp/err" && ok "not_verifiable criteria do not block approval" || fail "not_verifiable must not block" "$(cat "$tmp/err")"
+jq -r .body <<<"$payload" | grep -q '👀 Mobile Lighthouse score improves: Run Lighthouse on the preview' && ok "not_verifiable criteria are listed for the owner" || fail "unverifiable listed"
+jq -r .body <<<"$payload" | grep -q '✅ Loop pauses when the tab is hidden' && ok "met criteria are ticked" || fail "met criteria ticked"
+jq '. + {criteria:[{criterion:"Desktop rendering unchanged",status:"not_met",note:"Hero overlaps the nav at 1440px"}]}' "$fx/reviewer-clean.json" > "$tmp/crit-nm.json"
+payload="$(run_review "$tmp/crit-nm.json" "$fx/checks-pass.json" 2>"$tmp/err")"
+grep -q 'verdict=changes_requested' "$tmp/err" && ok "a not_met criterion overrides the model's approve" || fail "not_met must block" "$(cat "$tmp/err")"
+jq -r .body <<<"$payload" | grep -q '❌ Desktop rendering unchanged' && ok "not_met criteria are marked" || fail "not_met marked"
+
 section "screenshot selection in the review comment"
 mk() { jq -n --slurpfile r "$1" --slurpfile s "$fx/shots-many.json" '{reviewer:$r[0],shots:$s[0],hard:[],verdict:"approve",round:1,max_rounds:3,sha:"abc",preview:"",all_general:false}' | jq -f "$root/scripts/review-payload.jq"; }
 jq '. + {notable_shots: ["/lab · mobile · dark"]}' "$fx/reviewer-clean.json" > "$tmp/notable.json"

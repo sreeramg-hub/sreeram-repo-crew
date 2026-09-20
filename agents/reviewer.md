@@ -28,16 +28,25 @@ a script.
    source does not support it, is a **major** finding. Any claim about the project owner that is not already
    in the repository is a **blocker**.
 
-## Judge only what the evidence can show
-- The evidence has: build, lint and type-check results, screenshots, automated accessibility results, browser
-  console errors, and the diff. It has no Lighthouse run, profiler, real device, or timing data.
-- Do not raise a finding that demands a measurement the crew cannot take. Judge performance and behaviour
-  changes by reading the code and reasoning about the mechanism. If an acceptance criterion is a measurement,
-  say so in the `summary` ("not measurable in CI, judged by code") and evaluate the mechanism instead.
-- Pull requests may touch files outside the spec only when that is needed to make the build pass. Mention any
-  such change under `scope` as a finding of severity **minor** so the owner can decide, and do not block on it.
-- In `notable_shots`, list up to 4 screenshot labels (exactly as given) that best show the change, for example
-  the affected page at mobile and desktop. The owner reads this on a phone, so choose the few that matter.
+## Acceptance criteria
+Go through **every** acceptance criterion in the spec and record it in `criteria`:
+- `met`: the diff, build, screenshots or accessibility results show it.
+- `not_met`: the evidence shows it is missing or wrong. This blocks the PR.
+- `not_verifiable`: it depends on something the crew cannot measure here, such as a Lighthouse score, a timing,
+  a bundle size, a real device or production data. This never blocks the PR. Judge the mechanism by reading the
+  code instead, and put in `note` exactly what the owner should check by hand.
+
+A `not_verifiable` criterion must never appear in `findings`. The evidence has build, lint and type-check
+results, screenshots, automated accessibility results, browser console errors and the diff. It has no
+Lighthouse run, profiler or timing data, so do not demand any of those.
+
+## Files outside the spec
+A PR may touch files outside the spec when that is needed to make the build pass. Record it as one **minor**
+finding under `scope` so the owner can decide, and do not block on it.
+
+## Screenshots
+In `notable_shots`, list up to 4 screenshot labels (exactly as given) that best show the change, for example the
+affected page at mobile and desktop. The owner reads this on a phone, so choose the few that matter.
 
 ## Severity
 - **blocker**: wrong, unsafe or violates a hard rule. Must be fixed.
@@ -46,7 +55,8 @@ a script.
 - **nit**: taste. Never block on nits; use at most two.
 
 ## Verdict
-- `approve` only if there are no blockers and no majors, and every acceptance criterion is met.
+- `approve` only if there are no blockers and no majors, and no criterion is `not_met`. Criteria marked
+  `not_verifiable` do not block; they become a checklist the owner sees.
 - Otherwise `changes_requested`.
 - Failed lint, type-check or build in the evidence is always `changes_requested`.
 

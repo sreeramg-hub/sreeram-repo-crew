@@ -19,7 +19,8 @@ shots="${SHOTS_JSON:-}"
 
 # 1. Hard failures come from real tool exit codes, never from the model.
 hard="$(jq -c '[to_entries[] | select(.value.status == "fail") | (.key + " failed")]' "$CHECKS_JSON")"
-blocking="$(jq '[.findings[] | select(.severity == "blocker" or .severity == "major")] | length' "$REVIEWER_JSON")"
+blocking="$(jq '([.findings[] | select(.severity == "blocker" or .severity == "major")] | length) + ([(.criteria // [])[] | select(.status == "not_met")] | length)' "$REVIEWER_JSON")"
+unverifiable="$(jq -r '[(.criteria // [])[] | select(.status == "not_verifiable") | "- " + .criterion + (if (.note // "") != "" then " (" + .note + ")" else "" end)] | join("\n")' "$REVIEWER_JSON")"
 model_verdict="$(jq -r .verdict "$REVIEWER_JSON")"
 
 verdict="changes_requested"
@@ -78,6 +79,7 @@ if [ "$verdict" = "approve" ]; then
     [ "$ROUND" -gt 1 ] && printf ' after %s rounds' "$ROUND"
     printf '.\n\n'
     [ -n "${PREVIEW_URL:-}" ] && printf 'Preview: %s\n\n' "$PREVIEW_URL"
+    [ -n "$unverifiable" ] && printf '👀 **Please check these yourself, the crew cannot verify them:**\n%s\n\n' "$unverifiable"
     printf 'Check the preview on your phone, then merge. To ask for a change instead, comment `/fix <what to change>`.\n'
   } > "$tmp/ready.md"
   gh pr comment "$PR" --body-file "$tmp/ready.md" >/dev/null

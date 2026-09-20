@@ -281,7 +281,8 @@ jobs:
             git commit -q -m "chore(crew): apply changes for #$TARGET" -m "Co-Authored-By: Claude <noreply@anthropic.com>"
           fi
           if [ "$MODE" = "fix" ] && [ "$(git rev-parse HEAD)" = "$BEFORE" ]; then
-            gh pr comment "$TARGET" --body "🤷 The Coder made no changes for this feedback. Comment \`/fix <what to change>\` to be more specific."
+            gh pr comment "$TARGET" --body "@$CREW_OWNER 🤷 The Coder had nothing it could change for this feedback, so it stopped instead of guessing. Comment \`/fix <what to change>\` to steer it, \`/review\` to re-check as it is, or merge if you are happy."
+            gh pr edit "$TARGET" --add-label crew:needs-human
             echo "nochange=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi

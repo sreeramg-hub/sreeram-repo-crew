@@ -27,6 +27,7 @@ def fact_icon: (if . == "supported" then "✅" elif . == "unsupported" then "❌
 | ($in.reviewer.checklist // {}) as $c
 | ($in.reviewer.fact_checks // []) as $facts
 | ($in.shots // []) as $shots
+| ($in.reviewer.criteria // []) as $crit
 | ($in.reviewer.notable_shots // []) as $want
 | ($shots | map(select(.label as $l | $want | index($l)))) as $chosen
 | (if ($chosen | length) > 0 then $chosen else ($shots | .[0:2]) end) as $picked
@@ -43,6 +44,14 @@ def fact_icon: (if . == "supported" then "✅" elif . == "unsupported" then "❌
       + (if ($in.hard | length) > 0 then "**Automated checks failed:** " + ($in.hard | join(", ")) + "\n\n" else "" end)
       + "| UI | Standards | Correctness | A11y | Scope | Content |\n|:-:|:-:|:-:|:-:|:-:|:-:|\n"
       + "| \($c.ui | mark) | \($c.standards | mark) | \($c.correctness | mark) | \($c.accessibility | mark) | \($c.scope | mark) | \($c.content_accuracy | mark) |\n"
+      + (if ($crit | length) > 0
+          then "\n### Acceptance criteria\n"
+               + ($crit | map("- " + (if .status == "met" then "✅" elif .status == "not_met" then "❌" else "👀" end) + " " + .criterion + (if (.note // "") != "" then ": " + .note else "" end)) | join("\n"))
+               + (if ($crit | map(select(.status == "not_verifiable")) | length) > 0
+                  then "\n\n👀 = the crew cannot verify this from CI. Please check it yourself before merging."
+                  else "" end)
+               + "\n"
+          else "" end)
       + (if ($general | length) > 0
           then "\n### Findings\n" + ($general | map("- " + (if anchored then fmt_located else fmt end)) | join("\n")) + "\n"
           else "" end)

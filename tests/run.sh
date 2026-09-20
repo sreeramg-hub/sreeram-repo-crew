@@ -176,6 +176,11 @@ payload="$(run_review "$tmp/crit-nm.json" "$fx/checks-pass.json" 2>"$tmp/err")"
 grep -q 'verdict=changes_requested' "$tmp/err" && ok "a not_met criterion overrides the model's approve" || fail "not_met must block" "$(cat "$tmp/err")"
 jq -r .body <<<"$payload" | grep -q '❌ Desktop rendering unchanged' && ok "not_met criteria are marked" || fail "not_met marked"
 
+section "review header"
+body="$(CREW_DRY_RUN=1 PR=7 SHA=abc ROUND=5 MAX_ROUNDS=3 CREW_OWNER=sree REVIEWER_JSON="$fx/reviewer-clean.json" CHECKS_JSON="$fx/checks-pass.json" "$root/scripts/post-review.sh" 2>/dev/null | jq -r .body)"
+grep -q 're-review' <<<"$body" && ! grep -q 'round 5/3' <<<"$body" && ok "manual re-runs beyond the cap say re-review, not round 5/3" || fail "re-review header"
+grep -q 'remove-label "crew:needs-human"' "$root/scripts/post-review.sh" && ok "approval clears a stale needs-human label" || fail "needs-human cleared on approval"
+
 section "screenshot selection in the review comment"
 mk() { jq -n --slurpfile r "$1" --slurpfile s "$fx/shots-many.json" '{reviewer:$r[0],shots:$s[0],hard:[],verdict:"approve",round:1,max_rounds:3,sha:"abc",preview:"",all_general:false}' | jq -f "$root/scripts/review-payload.jq"; }
 jq '. + {notable_shots: ["/lab · mobile · dark"]}' "$fx/reviewer-clean.json" > "$tmp/notable.json"

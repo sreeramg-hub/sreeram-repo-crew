@@ -66,19 +66,29 @@ be verified on real runs.
 - Cross-repo reusable workflows with explicit `secrets:` pass-through from a personal-account caller.
 - Config loading from the default branch, sparse checkouts, labels, Node and pnpm setup, dependency audit and
   Lighthouse against production.
-- claude-code-action in agent mode with only `github_token` (no Claude GitHub App): the web-only research step
-  and the read-only proposal step both returned `structured_output` matching their `--json-schema`.
-- Proposal and tracking issue creation, including the `crew-map` that ties reply numbers to issues.
+- claude-code-action in agent mode with only `github_token` (no Claude GitHub App): every `--json-schema` step
+  (research, proposals, approver, coder, reviewer) returned `structured_output`.
+- Scout: proposals grounded in real audit data; proposal and tracking issues; the `crew-map`.
+- Comment router and tool-less Approver: an owner reply became approvals and skips, and started the Coder.
+- Coder: `allowed_bots: github-actions` admits dispatched runs, commits are authored as the owner, guard rails,
+  push, PR creation, and fix rounds. A fix round with nothing to change stops and pings the owner.
+- Reviewer: install, lint, type-check and build in the read-only job; Playwright, axe and screenshots on the
+  runner; screenshots published to `crew-screenshots`; inline review comments anchored to lines; the Vercel
+  "Preview" deployment link; the `crew/review` status; labels; the ready-to-merge and escalation comments.
 - Verifier: Vercel reports a "Production" GitHub deployment for the merge commit, the smoke test passes, and the
   "live and verified" comment posts.
 
-**Still unverified (first things to watch):**
-1. **Comment router and Approver:** that an owner comment triggers `crew-comment`, the tool-less Approver step
-   returns structured output, and dispatching `crew-coder` works.
-2. **Coder:** that `allowed_bots: github-actions` admits dispatched runs, the `settings` deny rules are honoured,
-   and `bot_id`/`bot_name` control the commit identity.
-3. **Reviewer:** the Playwright evidence step on the runner (`npx playwright install --with-deps chromium`, axe,
-   scroll-reveal handling), inline review anchoring (with its body-only fallback), screenshots from the
-   `crew-screenshots` branch rendering inside GitHub mobile comments, and the Vercel "Preview" deployment signal.
+**Lessons from the first live loop (all fixed):**
+- A project whose build needs an API key fails every review. Use `env:` placeholders in `.crew/config.yml`.
+- Prose instructions did not stop the Reviewer from blocking on an unmeasurable acceptance criterion. Criteria
+  are now graded `met` / `not_met` / `not_verifiable` in structured output; only `not_met` blocks, and
+  `not_verifiable` becomes a "please check yourself" list for the owner.
+- The Scout must not propose lockfile or dependency work, and must not write measurement-based criteria.
+
+**Still unverified:**
+1. Screenshot rendering from the `crew-screenshots` branch inside comments in the GitHub mobile app.
+2. A crew PR merging end to end: `next` starting the following proposal, screenshot cleanup on close, and the
+   Verifier commenting "live" on a crew PR.
+3. The `/fix` and `/review` comment commands from a phone (the dispatches they perform are verified).
 
 Each is a small local fix if it misbehaves; none affects the design.

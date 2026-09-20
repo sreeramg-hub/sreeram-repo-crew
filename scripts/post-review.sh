@@ -66,7 +66,7 @@ api --method POST "repos/$GH_REPO/statuses/$SHA" \
 
 # 4. Labels.
 if [ "$verdict" = "approve" ]; then
-  gh pr edit "$PR" --add-label "crew:review-approved" --remove-label "crew:changes-requested" >/dev/null
+  gh pr edit "$PR" --add-label "crew:review-approved" --remove-label "crew:changes-requested" --remove-label "crew:needs-human" >/dev/null
 else
   gh pr edit "$PR" --add-label "crew:changes-requested" --remove-label "crew:review-approved" >/dev/null
 fi

@@ -39,7 +39,7 @@ def fact_icon: (if . == "supported" then "✅" elif . == "unsupported" then "❌
     body: (
       "<!-- crew-review round=\($in.round) sha=\($in.sha) -->\n"
       + (if $in.verdict == "approve" then "## ✅ Review passed" else "## ✋ Changes requested" end)
-      + " · round \($in.round)/\($in.max_rounds)\n\n"
+      + (if $in.round > $in.max_rounds then " · re-review" else " · round \($in.round)/\($in.max_rounds)" end) + "\n\n"
       + ($in.reviewer.summary // "") + "\n\n"
       + (if ($in.hard | length) > 0 then "**Automated checks failed:** " + ($in.hard | join(", ")) + "\n\n" else "" end)
       + "| UI | Standards | Correctness | A11y | Scope | Content |\n|:-:|:-:|:-:|:-:|:-:|:-:|\n"

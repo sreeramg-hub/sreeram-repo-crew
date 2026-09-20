@@ -36,7 +36,8 @@ A bot cannot approve or request changes on its own PR. The Reviewer's verdict is
 3. a `COMMENT` review carrying the findings, inline where GitHub accepts the anchors and in the body otherwise.
 
 Hard failures come from real exit codes of lint, type-check and build. The model cannot override them, and any
-`blocker` or `major` finding forces `changes_requested` even if the model said approve.
+`blocker` or `major` finding, or any acceptance criterion graded `not_met`, forces `changes_requested` even if the
+model said approve. Criteria graded `not_verifiable` never block; they are listed for the owner to check.
 
 ## Security model
 

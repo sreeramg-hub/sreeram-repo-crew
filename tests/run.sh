@@ -165,6 +165,18 @@ jq -r .body <<<"$payload" | grep -q 'build failed' && ok "failed checks are list
 folded="$(jq -n --slurpfile r "$fx/reviewer-approve-with-major.json" '{reviewer:$r[0],shots:[],hard:[],verdict:"changes_requested",round:1,max_rounds:3,sha:"abc",preview:"",all_general:true}' | jq -f "$root/scripts/review-payload.jq")"
 [ "$(jq '.comments | length' <<<"$folded")" = "0" ] && jq -r .body <<<"$folded" | grep -q 'lib/data.ts:42' && ok "fallback folds inline findings into the body" || fail "fallback fold"
 
+section "screenshot selection in the review comment"
+mk() { jq -n --slurpfile r "$1" --slurpfile s "$fx/shots-many.json" '{reviewer:$r[0],shots:$s[0],hard:[],verdict:"approve",round:1,max_rounds:3,sha:"abc",preview:"",all_general:false}' | jq -f "$root/scripts/review-payload.jq"; }
+jq '. + {notable_shots: ["/lab · mobile · dark"]}' "$fx/reviewer-clean.json" > "$tmp/notable.json"
+body="$(mk "$tmp/notable.json" | jq -r .body)"
+[ "$(grep -c '^!\[' <<<"$body")" = "1" ] && grep -q '!\[/lab · mobile · dark\]' <<<"$body" && ok "only the reviewer's notable screenshot is embedded" || fail "notable screenshot embedding" "$(grep -c '^!\[' <<<"$body") images"
+grep -q 'More screenshots (3)' <<<"$body" && grep -q '^- \[/ · mobile · dark\](https://x/home-m-d.jpg)' <<<"$body" && ok "the rest are collapsed as plain links" || fail "collapsed links"
+body="$(mk "$fx/reviewer-clean.json" | jq -r .body)"
+[ "$(grep -c '^!\[' <<<"$body")" = "2" ] && grep -q 'More screenshots (2)' <<<"$body" && ok "falls back to the first two screenshots when none are chosen" || fail "fallback to first two"
+jq '. + {notable_shots: ["not a real label"]}' "$fx/reviewer-clean.json" > "$tmp/bad.json"
+[ "$(mk "$tmp/bad.json" | jq -r .body | grep -c '^!\[')" = "2" ] && ok "an unknown label falls back instead of embedding nothing" || fail "unknown label fallback"
+grep -q 'Lighthouse' "$root/agents/reviewer.md" && grep -q 'Never make a measured number a' "$root/agents/scout-propose.md" && ok "prompts forbid unmeasurable criteria and demands" || fail "measurement guard prompts"
+
 section "smoke.sh against a local server"
 site="$tmp/site"; mkdir -p "$site"; head -c 900 /dev/zero | tr '\0' 'a' > "$site/index.html"
 port=$((20000 + RANDOM % 20000))

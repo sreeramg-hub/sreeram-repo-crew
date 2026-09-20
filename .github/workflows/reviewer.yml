@@ -261,7 +261,7 @@ jobs:
           if [ -f "$ev/shots/manifest.json" ]; then
             jq -r '.a11y | map(select(.violations | length > 0)) | map("- \(.page) [\(.viewport), \(.scheme)]: " + (.violations | map("\(.id) (\(.impact), \(.nodes) nodes, e.g. \(.sample))") | join("; "))) | .[]' "$ev/shots/manifest.json" > "$b/a11y.txt"
             jq -r '.runtime | map("- \(.page) [\(.viewport), \(.scheme)]: " + (.problems | join(" | "))) | .[]' "$ev/shots/manifest.json" > "$b/runtime.txt"
-            (cd "$b" && ls shots/*.jpg 2>/dev/null) > "$b/shots.txt"
+            jq -r '.shots[] | "- \(.page) · \(.viewport) · \(.scheme)  ->  shots/\(.file)"' "$ev/shots/manifest.json" > "$b/shots.txt"
           fi
           for f in a11y runtime shots; do [ -s "$b/$f.txt" ] || echo "none" > "$b/$f.txt"; done
           git diff --stat "origin/$BASE...HEAD" > "$b/diffstat.txt"
@@ -270,7 +270,7 @@ jobs:
           prompt_section "Standards file (read it first)" "$CREW_STANDARDS"
           prompt_section "Project goals" "$CREW_GOALS"
           prompt_section "Base branch" "origin/$BASE (use: git diff origin/$BASE...HEAD)"
-          prompt_section "Screenshots to open with Read (paths relative to .crew-shared/.build)" "$b/shots.txt"
+          prompt_section "Screenshots: label -> file to open with Read (paths relative to .crew-shared/.build). Use the label text exactly in notable_shots" "$b/shots.txt"
           prompt_data "Spec the PR should satisfy" "$b/spec.md"
           prompt_data "Previous review, if any" "$b/previous.md"
           prompt_data "Automated checks" "$b/checks.md"

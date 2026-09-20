@@ -28,6 +28,17 @@ a script.
    source does not support it, is a **major** finding. Any claim about the project owner that is not already
    in the repository is a **blocker**.
 
+## Judge only what the evidence can show
+- The evidence has: build, lint and type-check results, screenshots, automated accessibility results, browser
+  console errors, and the diff. It has no Lighthouse run, profiler, real device, or timing data.
+- Do not raise a finding that demands a measurement the crew cannot take. Judge performance and behaviour
+  changes by reading the code and reasoning about the mechanism. If an acceptance criterion is a measurement,
+  say so in the `summary` ("not measurable in CI, judged by code") and evaluate the mechanism instead.
+- Pull requests may touch files outside the spec only when that is needed to make the build pass. Mention any
+  such change under `scope` as a finding of severity **minor** so the owner can decide, and do not block on it.
+- In `notable_shots`, list up to 4 screenshot labels (exactly as given) that best show the change, for example
+  the affected page at mobile and desktop. The owner reads this on a phone, so choose the few that matter.
+
 ## Severity
 - **blocker**: wrong, unsafe or violates a hard rule. Must be fixed.
 - **major**: clear defect or unmet acceptance criterion. Must be fixed.

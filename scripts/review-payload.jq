@@ -27,6 +27,11 @@ def fact_icon: (if . == "supported" then "✅" elif . == "unsupported" then "❌
 | ($in.reviewer.checklist // {}) as $c
 | ($in.reviewer.fact_checks // []) as $facts
 | ($in.shots // []) as $shots
+| ($in.reviewer.notable_shots // []) as $want
+| ($shots | map(select(.label as $l | $want | index($l)))) as $chosen
+| (if ($chosen | length) > 0 then $chosen else ($shots | .[0:2]) end) as $picked
+| ($picked | map(.label)) as $picked_labels
+| ($shots | map(select(.label as $l | ($picked_labels | index($l)) | not))) as $others
 | {
     commit_id: $in.sha,
     event: "COMMENT",
@@ -45,12 +50,13 @@ def fact_icon: (if . == "supported" then "✅" elif . == "unsupported" then "❌
           then "\n### Fact checks\n" + ($facts | map("- \(.result | fact_icon) \(.claim) ([source](\(.source_url)))" + (if (.note // "") != "" then ": " + .note else "" end)) | join("\n")) + "\n"
           else "" end)
       + (if ($shots | length) > 0
-          then "\n### Screenshots\n"
-               + ($shots | group_by(.viewport)
-                  | map("<details><summary>" + (.[0].viewport // "view") + "</summary>\n\n"
-                        + (map("**\(.label)**\n\n![\(.label)](\(.url))") | join("\n\n"))
-                        + "\n\n</details>")
-                  | join("\n"))
+          then "\n### Screenshots\n\n"
+               + ($picked | map("**\(.label)**\n\n![\(.label)](\(.url))") | join("\n\n"))
+               + (if ($others | length) > 0
+                  then "\n\n<details><summary>More screenshots (\($others | length))</summary>\n\n"
+                       + ($others | map("- [\(.label)](\(.url))") | join("\n"))
+                       + "\n\n</details>"
+                  else "" end)
                + "\n"
           else "" end)
       + (if ($in.preview // "") != "" then "\n**Preview:** \($in.preview)\n" else "" end)

@@ -4,6 +4,12 @@
   "properties": {
     "verdict": { "enum": ["approve", "changes_requested"] },
     "summary": { "type": "string", "description": "2-4 sentences, plain language, readable on a phone" },
+    "notable_shots": {
+      "type": "array",
+      "maxItems": 4,
+      "items": { "type": "string" },
+      "description": "Up to 4 screenshot labels, exactly as listed, that best show the change"
+    },
     "checklist": {
       "type": "object",
       "required": ["ui", "standards", "correctness", "accessibility", "scope", "content_accuracy"],

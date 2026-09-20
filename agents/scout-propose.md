@@ -25,6 +25,11 @@ You have read-only access to the repository (Read, Grep, Glob, git log/ls-files)
 1. Only propose sizes **S** or **M**. S is a data or single-file change. M is one new page or a few files.
    If an idea is larger, propose only its first stage and say so in the summary.
 2. Every proposal needs testable acceptance criteria (3 to 6 bullets), a `files_hint`, and honest risk.
+   Each criterion must be checkable from the code diff, the build and lint output, screenshots at mobile and
+   desktop widths in both colour schemes, or automated accessibility results. Never make a measured number a
+   criterion (a Lighthouse score, a timing, a bundle size in KB): the crew cannot produce those reliably.
+   Describe the mechanism instead ("the animation loop pauses when the tab is hidden") and mention the expected
+   benefit in the summary.
 3. Learn proposals must carry `sources` you have verified. Quality and feature proposals include sources
    only when they rely on one (for example a specification or a benchmark).
 4. Anything that needs a fact about the owner (their experience, opinions, metrics, contact details) goes in

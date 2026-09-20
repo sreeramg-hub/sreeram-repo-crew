@@ -1,0 +1,6 @@
+[
+  {"label":"/ · mobile · dark","viewport":"mobile","scheme":"dark","url":"https://x/home-m-d.jpg"},
+  {"label":"/ · desktop · dark","viewport":"desktop","scheme":"dark","url":"https://x/home-d-d.jpg"},
+  {"label":"/lab · mobile · dark","viewport":"mobile","scheme":"dark","url":"https://x/lab-m-d.jpg"},
+  {"label":"/lab · desktop · light","viewport":"desktop","scheme":"light","url":"https://x/lab-d-l.jpg"}
+]

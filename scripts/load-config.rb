@@ -56,6 +56,17 @@ resolved = {
                              ['.github/**', '.crew/**', '.env*', '*.pem', '*.key']))
 }
 
+# Non-secret placeholder values some projects need at build or start time (never put real secrets here).
+# Emitted unprefixed so `pnpm build` and `pnpm start` see them; reserved names cannot be overridden.
+RESERVED = /\A(CREW_|GITHUB_|RUNNER_|ACTIONS_|GH_|ANTHROPIC|LD_|DYLD_|NODE_OPTIONS\z|PATH\z|HOME\z|SHELL\z|BASH_ENV\z|ENV\z)/
+extra = dig(cfg, %w[env], {})
+abort('crew: env must be a map of NAME: value') unless extra.is_a?(Hash)
+extra.each do |k, v|
+  k = k.to_s
+  abort("crew: env name #{k} is not allowed") if k !~ /\A[A-Z][A-Z0-9_]*\z/ || k =~ RESERVED
+  resolved[k] = v.to_s
+end
+
 if ARGV.include?('--json')
   puts JSON.pretty_generate(resolved)
 else

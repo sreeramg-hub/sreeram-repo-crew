@@ -21,8 +21,11 @@ commands:
   build: pnpm build
   start: pnpm start
 
+env:                                # NON-secret placeholders needed at build or start time, e.g. a client SDK that
+  # SOME_API_KEY: placeholder-for-ci #   throws when its key is missing. Never put real secrets here.
+
 preview:
-  mode: local                       # local: build and serve on the runner | deployment: wait for Vercel's preview
+  mode: local                      # local: build and serve on the runner | deployment: wait for Vercel's preview
   url: http://localhost:3000
 
 production:

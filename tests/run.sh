@@ -67,6 +67,18 @@ else
   echo "  skip  portfolio config not found next to the crew repo"
 fi
 
+section "Config env placeholders"
+ec="$tmp/envcfg"; mkdir -p "$ec/.crew"
+printf 'project: {owner: me}\nenv:\n  RESEND_API_KEY: re_placeholder\n  CONTACT_RECIPIENT: "a@example.com"\n' > "$ec/.crew/config.yml"
+out="$(cd "$ec" && ruby "$root/scripts/load-config.rb")"
+grep -q '^RESEND_API_KEY=re_placeholder$' <<<"$out" && grep -q '^CONTACT_RECIPIENT=a@example.com$' <<<"$out" && ok "env entries are emitted unprefixed" || fail "env entries emitted"
+for bad in PATH GITHUB_ENV CREW_MODEL ANTHROPIC_API_KEY GH_TOKEN lowercase; do
+  printf 'project: {owner: me}\nenv:\n  %s: x\n' "$bad" > "$ec/.crew/config.yml"
+  (cd "$ec" && ruby "$root/scripts/load-config.rb" >/dev/null 2>&1); [ $? -ne 0 ] && ok "env name $bad is rejected" || fail "env name $bad must be rejected"
+done
+printf 'project: {owner: me}\nenv:\n  MULTI: "a\\nb"\n' > "$ec/.crew/config.yml"
+[ "$(cd "$ec" && ruby "$root/scripts/load-config.rb" | grep -c '^MULTI=')" = "1" ] && [ "$(cd "$ec" && ruby "$root/scripts/load-config.rb" | grep -c '^b$')" = "0" ] && ok "newlines in values cannot inject extra variables" || fail "newline injection"
+
 section "guard-diff.sh"
 g="$tmp/repo"; mkdir -p "$g"; (
   cd "$g" && git init -q -b main && git config user.email t@t && git config user.name t

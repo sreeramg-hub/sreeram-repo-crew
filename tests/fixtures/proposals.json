@@ -1,0 +1,10 @@
+{
+  "proposals": [
+    {"track":"quality","title":"Compress hero images","size":"S","risk":"low","summary":"Hero images are larger than needed on mobile.","why":"Faster LCP on phones.","acceptance_criteria":["LCP image under 150 KB","No visual regression"],"files_hint":["public/profile.jpg"],"sources":[],"needs_owner_input":[]},
+    {"track":"quality","title":"Add missing alt text","size":"S","risk":"low","summary":"Two images have empty alt attributes.","why":"Accessibility.","acceptance_criteria":["All images have meaningful alt"],"files_hint":["components/sections/About.tsx"],"sources":[],"needs_owner_input":[]},
+    {"track":"quality","title":"Third quality item over the cap","size":"M","risk":"low","summary":"Should be dropped by the per-track cap.","why":"n/a","acceptance_criteria":["x"],"files_hint":[],"sources":[],"needs_owner_input":[]},
+    {"track":"feature","title":"Add a Tech Radar page","size":"M","risk":"medium","summary":"A page listing technologies as Adopt, Trial or Watch.","why":"Shows judgement and gives visitors something to learn.","acceptance_criteria":["Page at /lab/tech-radar","Entries live in the data file","Each entry has a source and date"],"files_hint":["app/lab/tech-radar/page.tsx","lib/data.ts"],"sources":[],"needs_owner_input":["Your own Adopt/Trial/Watch opinions"]},
+    {"track":"learn","title":"Did you know: what HTTP/3 changes","size":"S","risk":"low","summary":"A short fact card about HTTP/3 running over QUIC.","why":"Educational.","acceptance_criteria":["Fact card on the home page","Source and date shown"],"files_hint":["lib/data.ts"],"sources":[{"url":"https://www.rfc-editor.org/rfc/rfc9114","title":"RFC 9114 HTTP/3","as_of":"2022-06-06"}],"needs_owner_input":[]},
+    {"track":"learn","title":"Big multi-page explainer series","size":"L","risk":"medium","summary":"Too large, must be dropped by the size rule.","why":"n/a","acceptance_criteria":["x"],"files_hint":[],"sources":[],"needs_owner_input":[]}
+  ]
+}

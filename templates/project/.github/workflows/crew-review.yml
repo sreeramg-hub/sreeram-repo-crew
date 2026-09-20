@@ -1,0 +1,29 @@
+name: crew-review
+
+# Dispatched by the Coder after it pushes, or by you commenting /review on a PR.
+# The file name matters: other crew workflows dispatch it by name.
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: Pull request number
+        type: string
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: write
+  statuses: write
+  actions: write
+  issues: write
+  deployments: read
+
+jobs:
+  review:
+    uses: sreeramg-hub/sreeram-repo-crew/.github/workflows/reviewer.yml@main
+    with:
+      pr: ${{ inputs.pr }}
+    secrets:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      CREW_PREVIEW_HEADERS: ${{ secrets.CREW_PREVIEW_HEADERS }}

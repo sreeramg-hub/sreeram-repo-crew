@@ -1,0 +1,6 @@
+{"decisions":[
+  {"index":1,"action":"approve","note":"keep it minimal"},
+  {"index":2,"action":"skip","note":""},
+  {"index":9,"action":"approve","note":""},
+  {"index":3,"action":"hold","note":""}
+],"needs_clarification":false,"reply":"Approved 1 (with your note). Skipped 2."}

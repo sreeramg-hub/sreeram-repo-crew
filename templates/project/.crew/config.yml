@@ -1,0 +1,65 @@
+# Crew configuration for this project. Every key is optional except project.owner.
+# Read from the default branch by every crew workflow, so a PR cannot change the rules it is judged by.
+
+project:
+  name: My Project
+  owner: your-github-login          # the only account whose comments the crew obeys
+
+model: claude-sonnet-5              # Anthropic model id used by every agent
+
+standards_file: CLAUDE.md           # rules the Coder follows and the Reviewer enforces
+goals_file: .crew/goals.md          # what the project is for; steers the Scout
+sources_file: .crew/sources.yml     # starting points for the Scout's research
+
+node_version: "22"
+commands:
+  package_manager: pnpm             # pnpm | npm | yarn
+  pnpm_version: "10"
+  install: pnpm install --frozen-lockfile
+  lint: pnpm lint
+  typecheck: ""                     # e.g. pnpm exec tsc --noEmit
+  build: pnpm build
+  start: pnpm start
+
+preview:
+  mode: local                       # local: build and serve on the runner | deployment: wait for Vercel's preview
+  url: http://localhost:3000
+
+production:
+  url: https://example.com          # used by the Verifier and for Lighthouse
+
+pages:                              # screenshotted, accessibility-checked and smoke-tested
+  - /
+
+screenshots:
+  viewports:
+    - { name: mobile, width: 390, height: 844 }
+    - { name: desktop, width: 1440, height: 900 }
+  color_schemes: [light, dark]
+
+scout:
+  timezone: America/Chicago         # decides which ISO week a run belongs to
+  max_proposals: 5
+  tracks:                           # per-track caps
+    quality: 2
+    feature: 2
+    learn: 2
+
+coder:
+  max_size: M                       # S or M
+  max_fix_rounds: 3                 # review rounds before the crew stops and asks you
+  branch_prefix: crew/
+  allow_new_dependencies: false
+  commit_as_owner: true             # commit as you (keeps Vercel Hobby deployments authorised)
+  protected_paths:                  # the Coder may never change these
+    - .github/**
+    - .crew/**
+    - .env*
+    - "*.pem"
+    - "*.key"
+
+limits:                             # max agent turns per run, a cost guard
+  scout_turns: 40
+  approver_turns: 4
+  coder_turns: 60
+  reviewer_turns: 30

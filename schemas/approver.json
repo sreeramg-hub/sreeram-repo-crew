@@ -1,0 +1,20 @@
+{
+  "type": "object",
+  "required": ["decisions", "needs_clarification", "reply"],
+  "properties": {
+    "decisions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["index", "action", "note"],
+        "properties": {
+          "index": { "type": "integer", "description": "Proposal number as shown in the tracking issue" },
+          "action": { "enum": ["approve", "skip", "hold"] },
+          "note": { "type": "string", "description": "Owner instructions for the coder, empty if none" }
+        }
+      }
+    },
+    "needs_clarification": { "type": "boolean" },
+    "reply": { "type": "string", "description": "Short confirmation, or the clarifying question" }
+  }
+}

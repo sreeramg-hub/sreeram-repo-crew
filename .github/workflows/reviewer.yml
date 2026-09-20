@@ -1,0 +1,334 @@
+name: Crew Reviewer (reusable)
+
+# Two jobs on purpose:
+#   verify  runs the PR's code (install, lint, build, browse) with a READ-ONLY token and no secrets.
+#   review  holds the write permissions and the API key, but never executes PR code. It only reads files.
+# The verdict is published as the `crew/review` commit status (a bot cannot approve its own PR), as labels,
+# and as a COMMENT review with the findings. The workflow definition always comes from the default branch,
+# so a PR cannot change the rules it is judged by.
+
+on:
+  workflow_call:
+    inputs:
+      pr:
+        type: string
+        required: true
+      crew_repo:
+        type: string
+        default: sreeramg-hub/sreeram-repo-crew
+      crew_ref:
+        type: string
+        default: main
+    secrets:
+      ANTHROPIC_API_KEY:
+        required: true
+      CREW_PREVIEW_HEADERS:
+        required: false
+        description: Optional JSON object of HTTP headers for protected previews, e.g. a Vercel automation bypass
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: write
+      deployments: read
+    outputs:
+      ok: ${{ steps.resolve.outputs.ok }}
+      sha: ${{ steps.resolve.outputs.sha }}
+      base: ${{ steps.resolve.outputs.base }}
+      preview: ${{ steps.deployed.outputs.url }}
+    env:
+      GH_REPO: ${{ github.repository }}
+      CREW_DIR: ${{ github.workspace }}/.crew-shared
+      PR: ${{ inputs.pr }}
+    steps:
+      - name: Resolve the PR
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          info="$(gh pr view "$PR" --json state,isCrossRepository,headRefOid,baseRefName)"
+          if [ "$(jq -r .state <<<"$info")" != "OPEN" ] || [ "$(jq -r .isCrossRepository <<<"$info")" = "true" ]; then
+            gh pr comment "$PR" --body "I only review open PRs from branches in this repository."
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "ok=true" >> "$GITHUB_OUTPUT"
+          echo "sha=$(jq -r .headRefOid <<<"$info")" >> "$GITHUB_OUTPUT"
+          echo "base=$(jq -r .baseRefName <<<"$info")" >> "$GITHUB_OUTPUT"
+
+      - name: Check out the PR head (no stored credentials)
+        if: steps.resolve.outputs.ok == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.resolve.outputs.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check out the crew
+        if: steps.resolve.outputs.ok == 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.crew_repo }}
+          ref: ${{ inputs.crew_ref }}
+          path: .crew-shared
+          persist-credentials: false
+
+      - name: Load project config (from the default branch, not the PR)
+        if: steps.resolve.outputs.ok == 'true'
+        env:
+          BASE: ${{ steps.resolve.outputs.base }}
+        run: |
+          git show "origin/$BASE:.crew/config.yml" > "$RUNNER_TEMP/config.yml"
+          CREW_CONFIG="$RUNNER_TEMP/config.yml" ruby "$CREW_DIR/scripts/load-config.rb" >> "$GITHUB_ENV"
+          echo "EVIDENCE=$RUNNER_TEMP/crew-evidence" >> "$GITHUB_ENV"
+
+      - name: Set up pnpm
+        if: steps.resolve.outputs.ok == 'true' && env.CREW_PM == 'pnpm'
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.CREW_PNPM_VERSION }}
+
+      - name: Set up Node
+        if: steps.resolve.outputs.ok == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.CREW_NODE }}
+          cache: ${{ env.CREW_PM }}
+
+      - name: Install dependencies
+        if: steps.resolve.outputs.ok == 'true'
+        run: bash -c "$CREW_INSTALL"
+
+      - name: Lint, type-check and build
+        id: checks
+        if: steps.resolve.outputs.ok == 'true'
+        run: |
+          set -uo pipefail
+          b="$CREW_DIR/.build"; mkdir -p "$b" "$EVIDENCE"
+          checks='{}'
+          run_check() {
+            local name="$1" cmd="$2" status="pass" tail=""
+            if [ -z "$cmd" ]; then
+              status="skipped"
+            else
+              bash -c "$cmd" > "$b/$name.log" 2>&1 || status="fail"
+              tail="$(tail -c 3000 "$b/$name.log")"
+            fi
+            checks="$(jq -c --arg n "$name" --arg s "$status" --arg t "$tail" '.[$n] = {status: $s, tail: $t}' <<<"$checks")"
+          }
+          run_check lint "$CREW_LINT"
+          run_check typecheck "$CREW_TYPECHECK"
+          run_check build "$CREW_BUILD"
+          printf '%s' "$checks" > "$EVIDENCE/checks.json"
+          echo "build=$(jq -r .build.status <<<"$checks")" >> "$GITHUB_OUTPUT"
+
+      - name: Find the deployed preview
+        id: deployed
+        if: steps.resolve.outputs.ok == 'true' && env.CREW_PREVIEW_MODE == 'deployment'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ steps.resolve.outputs.sha }}
+        run: |
+          url="$(bash "$CREW_DIR/scripts/wait-deployment.sh" "$SHA" 600 preview)"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Browse the site and collect evidence
+        if: steps.resolve.outputs.ok == 'true' && steps.checks.outputs.build == 'pass'
+        env:
+          PREVIEW_HEADERS: ${{ secrets.CREW_PREVIEW_HEADERS }}
+          DEPLOYED_URL: ${{ steps.deployed.outputs.url }}
+        run: |
+          set -uo pipefail
+          url="$DEPLOYED_URL"
+          if [ "$CREW_PREVIEW_MODE" != "deployment" ]; then
+            nohup bash -c "$CREW_START" > "$CREW_DIR/.build/server.log" 2>&1 &
+            trap 'kill $! 2>/dev/null || true' EXIT
+            for _ in $(seq 1 60); do
+              if curl -sf -o /dev/null "$CREW_PREVIEW_URL"; then url="$CREW_PREVIEW_URL"; break; fi
+              sleep 2
+            done
+          fi
+          if [ -z "$url" ]; then echo "No preview became available; reviewing code only."; exit 0; fi
+          if [ -n "$PREVIEW_HEADERS" ]; then export CREW_EXTRA_HEADERS="$PREVIEW_HEADERS"; fi
+          (cd "$CREW_DIR/scripts" && npm install --no-audit --no-fund --silent && npx playwright install --with-deps chromium >/dev/null)
+          node "$CREW_DIR/scripts/screenshots.mjs" "$url" "$EVIDENCE/shots" || echo "Evidence collection failed; continuing."
+
+      - name: Upload the evidence
+        if: steps.resolve.outputs.ok == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: crew-evidence
+          path: ${{ runner.temp }}/crew-evidence
+          retention-days: 3
+
+  review:
+    needs: verify
+    if: needs.verify.outputs.ok == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      pull-requests: write
+      statuses: write
+      actions: write
+      issues: write
+      deployments: read
+    env:
+      GH_REPO: ${{ github.repository }}
+      CREW_DIR: ${{ github.workspace }}/.crew-shared
+      PR: ${{ inputs.pr }}
+      SHA: ${{ needs.verify.outputs.sha }}
+      BASE: ${{ needs.verify.outputs.base }}
+    steps:
+      - name: Check out the PR head (read only, nothing is executed)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.verify.outputs.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check out the crew
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.crew_repo }}
+          ref: ${{ inputs.crew_ref }}
+          path: .crew-shared
+          persist-credentials: false
+
+      - name: Keep crew files out of git
+        run: echo ".crew-shared/" >> .git/info/exclude
+
+      - name: Load project config (from the default branch, not the PR)
+        run: |
+          git show "origin/$BASE:.crew/config.yml" > "$RUNNER_TEMP/config.yml"
+          CREW_CONFIG="$RUNNER_TEMP/config.yml" ruby "$CREW_DIR/scripts/load-config.rb" >> "$GITHUB_ENV"
+
+      - name: Download the evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: crew-evidence
+          path: ${{ runner.temp }}/crew-evidence
+
+      - name: Publish screenshots for the phone
+        id: shots
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          b="$CREW_DIR/.build"; mkdir -p "$b"
+          ev="$RUNNER_TEMP/crew-evidence"
+          echo "[]" > "$b/shots.json"
+          if [ -f "$ev/shots/manifest.json" ]; then
+            cp -R "$ev/shots" "$b/shots"
+            bash "$CREW_DIR/scripts/publish-screenshots.sh" "$PR" "$SHA" "$ev/shots" > "$b/shots.json" \
+              || { echo "Could not publish screenshots; continuing without them." >&2; echo "[]" > "$b/shots.json"; }
+          fi
+
+      - name: Look up the Vercel preview link
+        id: preview
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPLOYED_URL: ${{ needs.verify.outputs.preview }}
+        run: |
+          url="$DEPLOYED_URL"
+          [ -n "$url" ] || url="$(bash "$CREW_DIR/scripts/wait-deployment.sh" "$SHA" 180 preview)"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare the reviewer prompt
+        id: prep
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          source "$CREW_DIR/scripts/prompt.sh"
+          b="$CREW_DIR/.build"; ev="$RUNNER_TEMP/crew-evidence"
+
+          pr_json="$(gh pr view "$PR" --json title,body)"
+          linked="$(jq -r .body <<<"$pr_json" | grep -oiE '(closes|fixes|resolves) #[0-9]+' | head -1 | grep -oE '[0-9]+' || true)"
+          if [ -n "$linked" ]; then
+            CREW_OWNER="$CREW_OWNER" bash "$CREW_DIR/scripts/collect-context.sh" implement "$linked" > "$b/spec.md"
+          else
+            { echo "No linked proposal issue. Judge the PR against its own description:"; echo; jq -r .body <<<"$pr_json"; } > "$b/spec.md"
+          fi
+
+          reviews="$(gh api "repos/$GH_REPO/pulls/$PR/reviews" --paginate | jq -s 'add // []')"
+          echo "ROUND=$(( $(jq '[.[] | select(.body | contains("crew-review"))] | length' <<<"$reviews") + 1 ))" >> "$GITHUB_ENV"
+          jq -r '[.[] | select(.body | contains("crew-review"))] | last | .body // "none"' <<<"$reviews" > "$b/previous.md"
+
+          jq -r 'to_entries[] | "### \(.key): \(.value.status)\n\(if .value.status == "fail" then "```\n" + .value.tail + "\n```" else "" end)"' "$ev/checks.json" > "$b/checks.md"
+
+          if [ -f "$ev/shots/manifest.json" ]; then
+            jq -r '.a11y | map(select(.violations | length > 0)) | map("- \(.page) [\(.viewport), \(.scheme)]: " + (.violations | map("\(.id) (\(.impact), \(.nodes) nodes, e.g. \(.sample))") | join("; "))) | .[]' "$ev/shots/manifest.json" > "$b/a11y.txt"
+            jq -r '.runtime | map("- \(.page) [\(.viewport), \(.scheme)]: " + (.problems | join(" | "))) | .[]' "$ev/shots/manifest.json" > "$b/runtime.txt"
+            (cd "$b" && ls shots/*.jpg 2>/dev/null) > "$b/shots.txt"
+          fi
+          for f in a11y runtime shots; do [ -s "$b/$f.txt" ] || echo "none" > "$b/$f.txt"; done
+          git diff --stat "origin/$BASE...HEAD" > "$b/diffstat.txt"
+
+          prompt_init "$b/review-prompt.md" reviewer
+          prompt_section "Standards file (read it first)" "$CREW_STANDARDS"
+          prompt_section "Project goals" "$CREW_GOALS"
+          prompt_section "Base branch" "origin/$BASE (use: git diff origin/$BASE...HEAD)"
+          prompt_section "Screenshots to open with Read (paths relative to .crew-shared/.build)" "$b/shots.txt"
+          prompt_data "Spec the PR should satisfy" "$b/spec.md"
+          prompt_data "Previous review, if any" "$b/previous.md"
+          prompt_data "Automated checks" "$b/checks.md"
+          prompt_data "Automated accessibility findings (axe)" "$b/a11y.txt"
+          prompt_data "Console and network problems seen while browsing" "$b/runtime.txt"
+          prompt_data "Diff summary" "$b/diffstat.txt"
+          echo "schema=$(jq -c . "$CREW_DIR/schemas/reviewer.json")" >> "$GITHUB_OUTPUT"
+
+      - name: Review
+        id: review
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ github.token }}
+          allowed_bots: github-actions
+          settings: '{"permissions":{"deny":["Read(.git/**)","Read(.env*)"]}}'
+          prompt: "Read .crew-shared/.build/review-prompt.md and follow it exactly."
+          claude_args: |
+            --model ${{ env.CREW_MODEL }}
+            --max-turns ${{ env.CREW_REVIEW_TURNS }}
+            --allowedTools "Read,Glob,Grep,WebFetch,Bash(git diff:*),Bash(git log:*),Bash(git show:*)"
+            --disallowedTools "Edit,Write"
+            --json-schema '${{ steps.prep.outputs.schema }}'
+
+      - name: Post the verdict
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REVIEW: ${{ steps.review.outputs.structured_output }}
+          PREVIEW_URL: ${{ steps.preview.outputs.url }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          b="$CREW_DIR/.build"
+          [ -n "$REVIEW" ] || { echo "The Reviewer returned no structured output" >&2; exit 1; }
+          printf '%s' "$REVIEW" > "$b/reviewer.json"
+          export REVIEWER_JSON="$b/reviewer.json" CHECKS_JSON="$RUNNER_TEMP/crew-evidence/checks.json" SHOTS_JSON="$b/shots.json"
+          export MAX_ROUNDS="$CREW_MAX_ROUNDS"
+          bash "$CREW_DIR/scripts/post-review.sh"
+
+  on-failure:
+    needs: [verify, review]
+    if: failure()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: write
+      statuses: write
+      contents: read
+    steps:
+      - name: Mark the review as errored so nothing waits forever
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ inputs.pr }}
+          OWNER: ${{ github.repository_owner }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          sha="$(gh pr view "$PR" --json headRefOid --jq .headRefOid)"
+          gh api --method POST "repos/$GH_REPO/statuses/$sha" -f state=error -f context=crew/review \
+            -f description="Reviewer crashed, comment /review to retry" -f target_url="$RUN_URL" >/dev/null
+          gh pr comment "$PR" --body "@$OWNER 🚧 The review run failed ([run log]($RUN_URL)). Comment \`/review\` to retry."

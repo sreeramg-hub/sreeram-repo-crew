@@ -1,0 +1,48 @@
+{
+  "type": "object",
+  "required": ["verdict", "summary", "findings", "fact_checks", "checklist"],
+  "properties": {
+    "verdict": { "enum": ["approve", "changes_requested"] },
+    "summary": { "type": "string", "description": "2-4 sentences, plain language, readable on a phone" },
+    "checklist": {
+      "type": "object",
+      "required": ["ui", "standards", "correctness", "accessibility", "scope", "content_accuracy"],
+      "properties": {
+        "ui": { "enum": ["pass", "concern", "fail", "n/a"] },
+        "standards": { "enum": ["pass", "concern", "fail", "n/a"] },
+        "correctness": { "enum": ["pass", "concern", "fail", "n/a"] },
+        "accessibility": { "enum": ["pass", "concern", "fail", "n/a"] },
+        "scope": { "enum": ["pass", "concern", "fail", "n/a"] },
+        "content_accuracy": { "enum": ["pass", "concern", "fail", "n/a"] }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "maxItems": 15,
+      "items": {
+        "type": "object",
+        "required": ["severity", "category", "path", "line", "body"],
+        "properties": {
+          "severity": { "enum": ["blocker", "major", "minor", "nit"] },
+          "category": { "enum": ["ui", "standards", "bug", "a11y", "content", "performance", "scope"] },
+          "path": { "type": "string", "description": "Repo-relative file path, empty if not tied to a file" },
+          "line": { "type": "integer", "description": "Line in the new file, 0 if not tied to a line" },
+          "body": { "type": "string", "description": "What is wrong and the concrete fix" }
+        }
+      }
+    },
+    "fact_checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["claim", "source_url", "result", "note"],
+        "properties": {
+          "claim": { "type": "string" },
+          "source_url": { "type": "string" },
+          "result": { "enum": ["supported", "unsupported", "unverifiable"] },
+          "note": { "type": "string" }
+        }
+      }
+    }
+  }
+}

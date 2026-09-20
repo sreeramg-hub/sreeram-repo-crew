@@ -1,0 +1,15 @@
+{
+  "type": "object",
+  "required": ["status", "pr_title", "pr_body", "open_questions", "blocked_reason"],
+  "properties": {
+    "status": { "enum": ["done", "blocked"] },
+    "pr_title": { "type": "string", "description": "Conventional-commit style, under 70 characters" },
+    "pr_body": { "type": "string", "description": "Markdown: what changed, why, how it was verified" },
+    "open_questions": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Things the owner must decide or supply, for example facts only the owner knows"
+    },
+    "blocked_reason": { "type": "string", "description": "Empty unless status is blocked" }
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "verdict": "approve",
+  "summary": "Meets every acceptance criterion and follows the standards file.",
+  "checklist": {"ui":"pass","standards":"pass","correctness":"pass","accessibility":"pass","scope":"pass","content_accuracy":"pass"},
+  "findings": [],
+  "fact_checks": []
+}

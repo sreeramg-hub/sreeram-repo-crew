@@ -1,0 +1,175 @@
+name: Crew Scout (reusable)
+
+# Weekly: research what is new, audit the project, and open one issue per proposal plus a tracking issue
+# that pings the owner. Idempotent per ISO week, so re-runs and cron drift never create duplicates.
+
+on:
+  workflow_call:
+    inputs:
+      force:
+        type: boolean
+        default: false
+        description: Run even if this week's proposals already exist
+      crew_repo:
+        type: string
+        default: sreeramg-hub/sreeram-repo-crew
+      crew_ref:
+        type: string
+        default: main
+    secrets:
+      ANTHROPIC_API_KEY:
+        required: true
+
+jobs:
+  scout:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      CREW_DIR: ${{ github.workspace }}/.crew-shared
+    steps:
+      - name: Check out the project
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 50
+          persist-credentials: false
+
+      - name: Check out the crew
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.crew_repo }}
+          ref: ${{ inputs.crew_ref }}
+          path: .crew-shared
+          persist-credentials: false
+
+      - name: Keep crew files out of git
+        run: echo ".crew-shared/" >> .git/info/exclude
+
+      - name: Load project config
+        run: ruby "$CREW_DIR/scripts/load-config.rb" >> "$GITHUB_ENV"
+
+      - name: Decide whether to run this week
+        id: gate
+        env:
+          FORCE: ${{ inputs.force }}
+        run: |
+          week="$(TZ="$CREW_TZ" date +%G-W%V)"
+          echo "week=$week" >> "$GITHUB_OUTPUT"
+          existing="$(gh issue list --label crew:proposals --state all --search "\"Proposals $week\" in:title" --json number --jq length)"
+          if [ "$existing" -gt 0 ] && [ "$FORCE" != "true" ]; then
+            echo "Proposals for $week already exist, skipping."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up pnpm
+        if: steps.gate.outputs.run == 'true' && env.CREW_PM == 'pnpm'
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.CREW_PNPM_VERSION }}
+
+      - name: Set up Node
+        if: steps.gate.outputs.run == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.CREW_NODE }}
+          cache: ${{ env.CREW_PM }}
+
+      - name: Install dependencies
+        if: steps.gate.outputs.run == 'true'
+        run: bash -c "$CREW_INSTALL"
+
+      - name: Ensure labels
+        if: steps.gate.outputs.run == 'true'
+        run: bash "$CREW_DIR/scripts/ensure-labels.sh"
+
+      - name: Audit the project
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          mkdir -p "$CREW_DIR/.build"
+          bash "$CREW_DIR/scripts/audit.sh" > "$CREW_DIR/.build/audit.md"
+
+      - name: Prepare the research prompt
+        id: rprep
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          source "$CREW_DIR/scripts/prompt.sh"
+          b="$CREW_DIR/.build"
+          gh issue list --label crew:proposal --state all --limit 40 --json title --jq '.[].title' > "$b/recent.txt"
+          prompt_init "$b/research-prompt.md" scout-research
+          prompt_section "Project goals" "$CREW_GOALS"
+          prompt_section "Watch list" "$CREW_SOURCES"
+          prompt_data "Recent proposals" "$b/recent.txt"
+          d="CREW_$(uuidgen | tr -d '-')"
+          { echo "prompt<<$d"; cat "$b/research-prompt.md"; echo "$d"; } >> "$GITHUB_OUTPUT"
+          echo "schema=$(jq -c . "$CREW_DIR/schemas/research.json")" >> "$GITHUB_OUTPUT"
+
+      # Web tools only: this step never sees the repository, so hostile web content has nothing to reach.
+      - name: Research (web only)
+        id: research
+        if: steps.gate.outputs.run == 'true'
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ github.token }}
+          prompt: ${{ steps.rprep.outputs.prompt }}
+          claude_args: |
+            --model ${{ env.CREW_MODEL }}
+            --max-turns ${{ env.CREW_SCOUT_TURNS }}
+            --allowedTools "WebSearch,WebFetch"
+            --json-schema '${{ steps.rprep.outputs.schema }}'
+
+      - name: Save research
+        if: steps.gate.outputs.run == 'true'
+        env:
+          RESEARCH: ${{ steps.research.outputs.structured_output }}
+        run: |
+          if [ -n "$RESEARCH" ]; then printf '%s' "$RESEARCH" > "$CREW_DIR/.build/research.json"; else echo '{"items":[]}' > "$CREW_DIR/.build/research.json"; fi
+          jq -e '.items' "$CREW_DIR/.build/research.json" >/dev/null
+          echo "research items: $(jq '.items | length' "$CREW_DIR/.build/research.json")"
+
+      - name: Prepare the proposal prompt
+        id: pprep
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          source "$CREW_DIR/scripts/prompt.sh"
+          b="$CREW_DIR/.build"
+          gh pr list --state merged --limit 20 --json title --jq '.[].title' > "$b/recent-prs.txt"
+          prompt_init "$b/proposal-prompt.md" scout-propose
+          prompt_section "Project goals" "$CREW_GOALS"
+          prompt_section "Limits" "Maximum proposals: $CREW_SCOUT_MAX. Per-track caps: $CREW_SCOUT_TRACKS. Allowed sizes: S and M only. Read the standards file at: $CREW_STANDARDS"
+          prompt_data "Audit results" "$b/audit.md"
+          prompt_data "Research items" "$b/research.json"
+          prompt_data "Existing proposals" "$b/recent.txt"
+          prompt_data "Recently merged PRs" "$b/recent-prs.txt"
+          echo "schema=$(jq -c . "$CREW_DIR/schemas/proposals.json")" >> "$GITHUB_OUTPUT"
+
+      - name: Propose (read-only repository access)
+        id: propose
+        if: steps.gate.outputs.run == 'true'
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ github.token }}
+          prompt: "Read .crew-shared/.build/proposal-prompt.md and follow it exactly. Return only the JSON."
+          claude_args: |
+            --model ${{ env.CREW_MODEL }}
+            --max-turns ${{ env.CREW_SCOUT_TURNS }}
+            --allowedTools "Read,Grep,Glob,Bash(git log:*),Bash(git ls-files:*)"
+            --disallowedTools "Edit,Write,WebFetch,WebSearch"
+            --json-schema '${{ steps.pprep.outputs.schema }}'
+
+      - name: Open the proposal issues
+        if: steps.gate.outputs.run == 'true'
+        env:
+          PROPOSALS: ${{ steps.propose.outputs.structured_output }}
+          WEEK: ${{ steps.gate.outputs.week }}
+        run: |
+          [ -n "$PROPOSALS" ] || { echo "The Scout returned no structured output" >&2; exit 1; }
+          printf '%s' "$PROPOSALS" > "$CREW_DIR/.build/proposals.json"
+          bash "$CREW_DIR/scripts/create-proposals.sh" "$CREW_DIR/.build/proposals.json" "$WEEK"

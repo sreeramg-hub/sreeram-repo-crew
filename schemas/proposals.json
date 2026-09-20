@@ -1,0 +1,37 @@
+{
+  "type": "object",
+  "required": ["proposals"],
+  "properties": {
+    "proposals": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "required": ["track", "title", "size", "risk", "summary", "why", "acceptance_criteria", "files_hint", "sources", "needs_owner_input"],
+        "properties": {
+          "track": { "enum": ["quality", "feature", "learn"] },
+          "title": { "type": "string", "description": "Under 70 characters, plain language" },
+          "size": { "enum": ["S", "M", "L"] },
+          "risk": { "enum": ["low", "medium", "high"] },
+          "summary": { "type": "string", "description": "1-2 sentences readable on a phone" },
+          "why": { "type": "string", "description": "How this makes the project stronger" },
+          "acceptance_criteria": { "type": "array", "items": { "type": "string" } },
+          "files_hint": { "type": "array", "items": { "type": "string" } },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["url", "title", "as_of"],
+              "properties": {
+                "url": { "type": "string" },
+                "title": { "type": "string" },
+                "as_of": { "type": "string" }
+              }
+            }
+          },
+          "needs_owner_input": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    }
+  }
+}

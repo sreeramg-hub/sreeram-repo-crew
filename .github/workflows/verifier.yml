@@ -1,0 +1,94 @@
+name: Crew Verifier (reusable)
+
+# After a merge to the default branch: wait for the production deployment, smoke-test the live site, and tell
+# the owner it is live (or that it is broken). No LLM involved, so the check is deterministic.
+
+on:
+  workflow_call:
+    inputs:
+      crew_repo:
+        type: string
+        default: sreeramg-hub/sreeram-repo-crew
+      crew_ref:
+        type: string
+        default: main
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      deployments: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      CREW_DIR: ${{ github.workspace }}/.crew-shared
+      SHA: ${{ github.sha }}
+    steps:
+      - name: Check out the project config
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: .crew
+          persist-credentials: false
+
+      - name: Check out the crew
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.crew_repo }}
+          ref: ${{ inputs.crew_ref }}
+          path: .crew-shared
+          persist-credentials: false
+
+      - name: Load project config
+        run: ruby "$CREW_DIR/scripts/load-config.rb" >> "$GITHUB_ENV"
+
+      - name: Find the merged PR
+        id: pr
+        run: echo "number=$(gh api "repos/$GH_REPO/commits/$SHA/pulls" --jq '.[0].number // empty')" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for the production deployment
+        id: deploy
+        run: |
+          url="$(bash "$CREW_DIR/scripts/wait-deployment.sh" "$SHA" 600 production)"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          [ -n "$url" ] || echo "::warning::No production deployment was reported for $SHA; smoke-testing the site URL anyway."
+
+      - name: Smoke-test production
+        id: smoke
+        env:
+          DEPLOYED_URL: ${{ steps.deploy.outputs.url }}
+        run: |
+          base="${CREW_PROD_URL:-$DEPLOYED_URL}"
+          if [ -z "$base" ]; then echo "No URL to test; set production.url in .crew/config.yml."; echo "skipped=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          echo "base=$base" >> "$GITHUB_OUTPUT"
+          set +e
+          bash "$CREW_DIR/scripts/smoke.sh" "$base" | tee "$RUNNER_TEMP/smoke.md"
+          echo "ok=$([ "${PIPESTATUS[0]}" -eq 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      - name: Tell the owner it is live
+        if: steps.smoke.outputs.ok == 'true' && steps.pr.outputs.number != ''
+        env:
+          PR: ${{ steps.pr.outputs.number }}
+          BASE_URL: ${{ steps.smoke.outputs.base }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          { printf '@%s 🚀 **Live and verified:** %s\n\n' "$OWNER" "$BASE_URL"; cat "$RUNNER_TEMP/smoke.md"; } > "$RUNNER_TEMP/live.md"
+          gh pr comment "$PR" --body-file "$RUNNER_TEMP/live.md"
+
+      - name: Raise the alarm if production is broken
+        if: steps.smoke.outputs.ok == 'false'
+        env:
+          PR: ${{ steps.pr.outputs.number }}
+          OWNER: ${{ github.repository_owner }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          bash "$CREW_DIR/scripts/ensure-labels.sh" >/dev/null
+          {
+            printf '@%s 🚨 The live site failed its smoke test after commit `%s`%s.\n\n' "$OWNER" "${SHA:0:7}" "${PR:+ (PR #$PR)}"
+            cat "$RUNNER_TEMP/smoke.md"
+            printf '\n[Run log](%s)\n\nTo roll back, open the merged PR on GitHub and use **Revert**, or redeploy the previous deployment in Vercel.\n' "$RUN_URL"
+          } > "$RUNNER_TEMP/alarm.md"
+          gh issue create --title "Production smoke test failed after ${SHA:0:7}" --label crew:needs-human --body-file "$RUNNER_TEMP/alarm.md"

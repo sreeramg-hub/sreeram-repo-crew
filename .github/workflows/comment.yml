@@ -1,0 +1,159 @@
+name: Crew Comment Router (reusable)
+
+# Handles the owner's comments:
+#   - a reply on the weekly proposals issue  -> Approver turns it into approvals/skips and starts the Coder
+#   - /scout on any issue                    -> run the Scout now
+#   - /review on a PR                        -> run the Reviewer now
+#   - /fix <instructions> on a PR            -> ask the Coder to change the PR
+# Only comments from the repository owner are ever handled. The caller must trigger on issue_comment (created).
+
+on:
+  workflow_call:
+    inputs:
+      crew_repo:
+        type: string
+        default: sreeramg-hub/sreeram-repo-crew
+      crew_ref:
+        type: string
+        default: main
+    secrets:
+      ANTHROPIC_API_KEY:
+        required: true
+
+jobs:
+  commands:
+    if: >-
+      github.event.comment.user.login == github.repository_owner &&
+      (startsWith(github.event.comment.body, '/scout') ||
+       (github.event.issue.pull_request &&
+        (startsWith(github.event.comment.body, '/fix') || startsWith(github.event.comment.body, '/review'))))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      issues: write
+      pull-requests: write
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Route the command
+        env:
+          BODY: ${{ github.event.comment.body }}
+          NUMBER: ${{ github.event.issue.number }}
+        run: |
+          first="${BODY%%$'\n'*}"
+          case "$first" in
+            /scout*)
+              gh workflow run crew-scout.yml -f force=true
+              msg="On it. Running the Scout now; new proposals will appear as a fresh issue."
+              ;;
+            /review*)
+              gh workflow run crew-review.yml -f pr="$NUMBER"
+              msg="Reviewing now."
+              ;;
+            /fix*)
+              instruction="${BODY#/fix}"
+              instruction="${instruction#"${instruction%%[![:space:]]*}"}"
+              if [ -z "$instruction" ]; then
+                msg="Tell me what to change, for example: \`/fix make the cards smaller on mobile\`."
+              else
+                gh workflow run crew-coder.yml -f mode=fix -f pr="$NUMBER" -f instruction="$instruction"
+                msg="Got it. The Coder is on it and the Reviewer will re-check afterwards."
+              fi
+              ;;
+          esac
+          gh issue comment "$NUMBER" --body "$msg"
+
+  approve:
+    if: >-
+      github.event.comment.user.login == github.repository_owner &&
+      !github.event.issue.pull_request &&
+      github.event.issue.state == 'open' &&
+      contains(github.event.issue.labels.*.name, 'crew:proposals') &&
+      !startsWith(github.event.comment.body, '/scout')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: write
+      issues: write
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      CREW_DIR: ${{ github.workspace }}/.crew-shared
+      ISSUE: ${{ github.event.issue.number }}
+    steps:
+      - name: Check out the project config
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: .crew
+          persist-credentials: false
+
+      - name: Check out the crew
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.crew_repo }}
+          ref: ${{ inputs.crew_ref }}
+          path: .crew-shared
+          persist-credentials: false
+
+      - name: Load project config
+        run: ruby "$CREW_DIR/scripts/load-config.rb" >> "$GITHUB_ENV"
+
+      - name: Prepare the approver prompt
+        id: prep
+        env:
+          REPLY: ${{ github.event.comment.body }}
+        run: |
+          source "$CREW_DIR/scripts/prompt.sh"
+          b="$CREW_DIR/.build"; mkdir -p "$b"
+          body="$(gh issue view "$ISSUE" --json body --jq .body)"
+          map="$(sed -n 's/.*<!-- crew-map: \(.*\) -->.*/\1/p' <<<"$body" | head -1)"
+          [ -n "$map" ] || { echo "no crew-map in issue #$ISSUE" >&2; exit 1; }
+          jq -r '.[] | "\(.index)|\(.number)"' <<<"$map" | while IFS='|' read -r i n; do
+            t="$(gh issue view "$n" --json title,state --jq '"\(.title) [\(.state)]"')"
+            echo "$i. #$n $t"
+          done > "$b/proposals.txt"
+          printf '%s' "$REPLY" > "$b/reply.txt"
+          prompt_init "$b/approver-prompt.md" approver
+          prompt_data "Numbered proposals" "$b/proposals.txt"
+          prompt_data "Owner reply" "$b/reply.txt"
+          d="CREW_$(uuidgen | tr -d '-')"
+          { echo "prompt<<$d"; cat "$b/approver-prompt.md"; echo "$d"; } >> "$GITHUB_OUTPUT"
+          echo "schema=$(jq -c . "$CREW_DIR/schemas/approver.json")" >> "$GITHUB_OUTPUT"
+
+      # No tools at all: the model can only read the prompt and return JSON.
+      - name: Interpret the reply
+        id: interpret
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ github.token }}
+          prompt: ${{ steps.prep.outputs.prompt }}
+          claude_args: |
+            --model ${{ env.CREW_MODEL }}
+            --max-turns ${{ env.CREW_APPROVER_TURNS }}
+            --disallowedTools "Bash,Edit,Write,Read,Glob,Grep,WebFetch,WebSearch"
+            --json-schema '${{ steps.prep.outputs.schema }}'
+
+      - name: Apply the decisions
+        id: apply
+        env:
+          DECISIONS: ${{ steps.interpret.outputs.structured_output }}
+        run: |
+          [ -n "$DECISIONS" ] || { echo "no structured output" >&2; exit 1; }
+          printf '%s' "$DECISIONS" > "$CREW_DIR/.build/decisions.json"
+          bash "$CREW_DIR/scripts/apply-decisions.sh" "$CREW_DIR/.build/decisions.json" "$ISSUE"
+
+      - name: Start the Coder
+        if: steps.apply.outputs.approved != '0'
+        run: gh workflow run crew-coder.yml -f mode=next
+
+      - name: Tell the owner if that failed
+        if: failure()
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh issue comment "$ISSUE" --body "⚠️ I could not process that reply ([run log]($RUN_URL)). Try rephrasing, for example: \`do 1 and 3, skip 2\`."

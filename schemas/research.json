@@ -1,0 +1,23 @@
+{
+  "type": "object",
+  "required": ["items"],
+  "properties": {
+    "items": {
+      "type": "array",
+      "maxItems": 12,
+      "items": {
+        "type": "object",
+        "required": ["title", "summary", "why_it_matters", "source_url", "source_title", "as_of", "kind"],
+        "properties": {
+          "title": { "type": "string" },
+          "summary": { "type": "string", "description": "2-3 sentences, paraphrased, no copied text" },
+          "why_it_matters": { "type": "string", "description": "Why a visitor to the portfolio would care" },
+          "source_url": { "type": "string", "description": "Primary source you actually opened" },
+          "source_title": { "type": "string" },
+          "as_of": { "type": "string", "description": "Publication or verification date, YYYY-MM-DD" },
+          "kind": { "enum": ["release", "paper", "trend", "fact", "tool"] }
+        }
+      }
+    }
+  }
+}

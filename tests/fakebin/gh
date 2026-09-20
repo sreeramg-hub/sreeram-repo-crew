@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Fake gh for tests: replays fixtures from $GH_FIXTURES and logs mutating calls to $GH_LOG.
+args=("$@"); jqexpr=""
+for ((i = 0; i < ${#args[@]}; i++)); do
+  [ "${args[i]}" = "--jq" ] && jqexpr="${args[i+1]}"
+  if [ "${args[i]}" = "--body-file" ]; then bodyfile="${args[i+1]}"; fi
+done
+case "$1 $2" in
+  "issue view") f="$GH_FIXTURES/issue-view-$3.json" ;;
+  "pr list") f="$GH_FIXTURES/pr-list.json" ;;
+  "issue list") f="$GH_FIXTURES/issue-list.json" ;;
+  "issue comment" | "issue edit" | "issue close" | "pr comment" | "pr edit")
+    echo "gh $*" >> "$GH_LOG"
+    [ -n "${bodyfile:-}" ] && sed 's/^/    | /' "$bodyfile" >> "$GH_LOG"
+    exit 0 ;;
+  *) echo "fake gh: unhandled: $*" >&2; exit 1 ;;
+esac
+if [ -n "$jqexpr" ]; then jq -r "$jqexpr" "$f"; else cat "$f"; fi

@@ -1,0 +1,46 @@
+name: crew-coder
+
+# Runs when another crew workflow dispatches it, and starts the next approved item whenever a crew PR is closed.
+# The file name matters: other crew workflows dispatch it by name.
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: next, implement or fix
+        type: string
+        default: next
+      issue:
+        description: Proposal issue number (implement)
+        type: string
+        default: ''
+      pr:
+        description: Pull request number (fix)
+        type: string
+        default: ''
+      instruction:
+        description: Owner instruction (fix)
+        type: string
+        default: ''
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+  actions: write
+
+jobs:
+  coder:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && startsWith(github.event.pull_request.head.ref, 'crew/'))
+    uses: sreeramg-hub/sreeram-repo-crew/.github/workflows/coder.yml@main
+    with:
+      mode: ${{ inputs.mode || 'next' }}
+      issue: ${{ inputs.issue || '' }}
+      pr: ${{ inputs.pr || '' }}
+      instruction: ${{ inputs.instruction || '' }}
+    secrets:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

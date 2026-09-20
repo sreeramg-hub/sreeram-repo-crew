@@ -1,0 +1,26 @@
+name: crew-scout
+
+# Weekly proposals. 12:00 UTC is 07:00 US Central in summer (06:00 in winter).
+# The run is idempotent per ISO week, so a delayed or repeated trigger never creates duplicates.
+
+on:
+  schedule:
+    - cron: '0 12 * * 1'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Run even if this week's proposals already exist
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  scout:
+    uses: sreeramg-hub/sreeram-repo-crew/.github/workflows/scout.yml@main
+    with:
+      force: ${{ inputs.force == true }}
+    secrets:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

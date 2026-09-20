@@ -1,0 +1,10 @@
+{
+  "verdict": "approve",
+  "summary": "Looks fine overall but one claim has no source.",
+  "checklist": {"ui":"pass","standards":"pass","correctness":"pass","accessibility":"concern","scope":"pass","content_accuracy":"fail"},
+  "findings": [
+    {"severity":"nit","category":"ui","path":"","line":0,"body":"Slightly tight padding on mobile."},
+    {"severity":"major","category":"content","path":"lib/data.ts","line":42,"body":"The claim has no source. Add the RFC link and date."}
+  ],
+  "fact_checks": [{"claim":"HTTP/3 runs over QUIC","source_url":"https://www.rfc-editor.org/rfc/rfc9114","result":"supported","note":""}]
+}

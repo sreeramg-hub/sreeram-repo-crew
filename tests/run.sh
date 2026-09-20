@@ -171,6 +171,10 @@ echo "my own goals" > "$proj/.crew/goals.md"
 full="$tmp/full"; mkdir -p "$full"; cp -R "$root/templates/project/." "$full/"
 "$root/scripts/copy-templates.sh" "$full" >/dev/null 2>&1; [ $? -eq 0 ] && ok "exits 0 when every file already exists (the case that broke onboarding)" || fail "all-present case"
 
+section "Prompt content guards"
+grep -q 'lockfile' "$root/agents/scout-propose.md" && grep -q 'Dependabot' "$root/agents/scout-propose.md" && ok "Scout is told not to propose lockfile or dependency work" || fail "Scout prompt must forbid dependency and lockfile proposals"
+grep -q 'never invent facts\|Never invent facts' "$root/agents/_shared.md" && ok "shared rules forbid invented facts about the owner" || fail "shared rules must forbid invented facts"
+
 section "Prompt assembly"
 (
   export CREW_DIR="$root"

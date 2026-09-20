@@ -57,21 +57,28 @@ The bot (`github-actions[bot]`) posts the events that need you and `@`-mentions 
 those into pushes. Your own account never posts them, because GitHub does not notify you of your own actions.
 Notification channels are deliberately just GitHub comments so the mechanism is one thing to understand.
 
-## Not yet verified (needs the first real run)
+## Verification status
 
-The scripts, schemas, config and cross-references are covered by `tests/run.sh`. These parts cannot be tested
-locally and are the first things to watch on a first run:
+The scripts, schemas, config and cross-references are covered by `tests/run.sh`. GitHub-side behaviour can only
+be verified on real runs.
 
-1. **claude-code-action behaviour:** that `structured_output` is populated for the `--json-schema` steps in
-   agent mode, that `github_token` alone (no Claude GitHub App) is sufficient, that `allowed_bots: github-actions`
-   admits dispatched runs, and that the `settings` deny rules are honoured.
-2. **Playwright evidence step** on the runner (`npx playwright install --with-deps chromium`, axe, the scroll
-   reveal handling for this site).
-3. **Vercel signals:** that Vercel reports GitHub deployments named "Preview" and "Production" for these commits.
-   If not, the Verifier falls back to smoke-testing `production.url` after its wait, and the Reviewer simply has
-   no preview link.
-4. **Inline review anchoring**, with the automatic fallback to body-only findings if GitHub rejects a line.
-5. **Screenshot rendering** from the `crew-screenshots` branch inside comments on GitHub mobile.
-6. **`secrets:` pass-through** from a personal-account caller to a reusable workflow in another repo.
+**Verified on real runs (2026-09-19, portfolio repo):**
+- Cross-repo reusable workflows with explicit `secrets:` pass-through from a personal-account caller.
+- Config loading from the default branch, sparse checkouts, labels, Node and pnpm setup, dependency audit and
+  Lighthouse against production.
+- claude-code-action in agent mode with only `github_token` (no Claude GitHub App): the web-only research step
+  and the read-only proposal step both returned `structured_output` matching their `--json-schema`.
+- Proposal and tracking issue creation, including the `crew-map` that ties reply numbers to issues.
+- Verifier: Vercel reports a "Production" GitHub deployment for the merge commit, the smoke test passes, and the
+  "live and verified" comment posts.
+
+**Still unverified (first things to watch):**
+1. **Comment router and Approver:** that an owner comment triggers `crew-comment`, the tool-less Approver step
+   returns structured output, and dispatching `crew-coder` works.
+2. **Coder:** that `allowed_bots: github-actions` admits dispatched runs, the `settings` deny rules are honoured,
+   and `bot_id`/`bot_name` control the commit identity.
+3. **Reviewer:** the Playwright evidence step on the runner (`npx playwright install --with-deps chromium`, axe,
+   scroll-reveal handling), inline review anchoring (with its body-only fallback), screenshots from the
+   `crew-screenshots` branch rendering inside GitHub mobile comments, and the Vercel "Preview" deployment signal.
 
 Each is a small local fix if it misbehaves; none affects the design.

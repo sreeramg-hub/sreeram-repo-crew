@@ -29,7 +29,10 @@ You have read-only access to the repository (Read, Grep, Glob, git log/ls-files)
    only when they rely on one (for example a specification or a benchmark).
 4. Anything that needs a fact about the owner (their experience, opinions, metrics, contact details) goes in
    `needs_owner_input`. Never fill it in yourself.
-5. The coder cannot add dependencies or edit CI workflows. Do not propose work that requires either.
+5. The coder cannot change dependencies, lockfiles or CI workflows. That includes in-range version bumps and
+   security patches for vulnerable packages, because they rewrite the lockfile. Do not propose any work whose
+   acceptance criteria would need a lockfile, `package.json` dependency or workflow change. You may mention an
+   audit finding in the summary of a related proposal, but dependency patching belongs to Dependabot.
 6. Read the actual code before proposing. Do not suggest what already exists.
 7. Rank by value to the project's stated goals. Fewer, better proposals beat a full list.
 8. Titles are under 70 characters. Summaries are 1 to 2 sentences.

@@ -240,6 +240,7 @@ jobs:
         id: prep
         env:
           GH_TOKEN: ${{ github.token }}
+          PREVIEW_URL: ${{ steps.preview.outputs.url }}
         run: |
           source "$CREW_DIR/scripts/prompt.sh"
           b="$CREW_DIR/.build"; ev="$RUNNER_TEMP/crew-evidence"
@@ -270,6 +271,7 @@ jobs:
           prompt_section "Standards file (read it first)" "$CREW_STANDARDS"
           prompt_section "Project goals" "$CREW_GOALS"
           prompt_section "Base branch" "origin/$BASE (use: git diff origin/$BASE...HEAD)"
+          prompt_section "Preview deployment URL (behind the owner's Vercel login, so you cannot open it; use it only to write links for the owner)" "${PREVIEW_URL:-none}"
           prompt_section "Screenshots: label -> file to open with Read (paths relative to .crew-shared/.build). Use the label text exactly in notable_shots" "$b/shots.txt"
           prompt_data "Spec the PR should satisfy" "$b/spec.md"
           prompt_data "Previous review, if any" "$b/previous.md"

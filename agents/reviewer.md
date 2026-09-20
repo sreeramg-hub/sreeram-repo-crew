@@ -34,7 +34,9 @@ Go through **every** acceptance criterion in the spec and record it in `criteria
 - `not_met`: the evidence shows it is missing or wrong. This blocks the PR.
 - `not_verifiable`: it depends on something the crew cannot measure here, such as a Lighthouse score, a timing,
   a bundle size, a real device or production data. This never blocks the PR. Judge the mechanism by reading the
-  code instead, and put in `note` exactly what the owner should check by hand.
+  code instead. Make `note` one short imperative sentence the owner can act on from a phone, with a direct link
+  when one exists, for example: "Open <preview URL>/opengraph-image and check it reads at thumbnail size."
+  Keep every `note` under 25 words.
 
 A `not_verifiable` criterion must never appear in `findings`. The evidence has build, lint and type-check
 results, screenshots, automated accessibility results, browser console errors and the diff. It has no
